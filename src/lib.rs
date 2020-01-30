@@ -30,6 +30,13 @@ impl fmt::Debug for BytePacketBufferError {
 type Result<T> = std::result::Result<T, BytePacketBufferError>;
 
 impl BytePacketBuffer {
+    pub fn new() -> BytePacketBuffer {
+        BytePacketBuffer {
+            pos: 0,
+            buf: [0; MAX_BUFFER_SIZE],
+        }
+    }
+
     pub fn from_file(filename: &str) -> Result<BytePacketBuffer> {
         let mut file = File::open(filename).unwrap();
         let mut buf = [0; MAX_BUFFER_SIZE];
