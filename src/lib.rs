@@ -200,3 +200,19 @@ impl QueryType {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsQuestion {
+    pub name: String,
+    pub qtype: QueryType,
+}
+
+impl BytePacketBuffer {
+    pub fn read_question(&mut self) -> Option<DnsQuestion> {
+        let name = self.read_qname()?;
+        let qtype = QueryType::from_num(self.read_u16()?);
+        self.read_u16()?;
+
+        Some(DnsQuestion { name, qtype })
+    }
+}
