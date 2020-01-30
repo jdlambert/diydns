@@ -1,3 +1,6 @@
+use std::iter;
+use std::net::Ipv4Addr;
+
 const MAX_BUFFER_SIZE: usize = 512;
 
 pub struct BytePacketBuffer {
@@ -211,8 +214,88 @@ impl BytePacketBuffer {
     pub fn read_question(&mut self) -> Option<DnsQuestion> {
         let name = self.read_qname()?;
         let qtype = QueryType::from_num(self.read_u16()?);
-        self.read_u16()?;
+        self.read_u16()?; // class, which we ignore
 
         Some(DnsQuestion { name, qtype })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DnsRecord {
+    Unknown {
+        domain: String,
+        qtype: u16,
+        data_len: u16,
+        ttl: u32,
+    },
+    A {
+        domain: String,
+        addr: Ipv4Addr,
+        ttl: u32,
+    },
+}
+
+impl BytePacketBuffer {
+    pub fn read_record(&mut self) -> Option<DnsRecord> {
+        let domain = self.read_qname()?;
+
+        let qtype = QueryType::from_num(self.read_u16()?);
+        self.read_u16()?; // class, which we ignore
+        let ttl = self.read_u32()?;
+        let data_len = self.read_u16()?;
+
+        Some(match qtype {
+            QueryType::A => DnsRecord::A {
+                domain,
+                ttl,
+                addr: Ipv4Addr::from(self.read_u32()?),
+            },
+            QueryType::Unknown(qtype) => {
+                self.pos += data_len as usize;
+
+                DnsRecord::Unknown {
+                    domain,
+                    qtype,
+                    data_len,
+                    ttl,
+                }
+            }
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DnsPacket {
+    pub header: DnsHeader,
+    pub questions: Vec<DnsQuestion>,
+    pub answers: Vec<DnsRecord>,
+    pub authorities: Vec<DnsRecord>,
+    pub resources: Vec<DnsRecord>,
+}
+
+impl BytePacketBuffer {
+    pub fn read_packet(&mut self) -> Option<DnsPacket> {
+        let header = self.read_header()?;
+
+        let questions = iter::repeat_with(|| self.read_question().unwrap())
+            .take(header.questions as usize)
+            .collect();
+        let answers = iter::repeat_with(|| self.read_record().unwrap())
+            .take(header.answers as usize)
+            .collect();
+        let authorities = iter::repeat_with(|| self.read_record().unwrap())
+            .take(header.authoritative_entries as usize)
+            .collect();
+        let resources = iter::repeat_with(|| self.read_record().unwrap())
+            .take(header.resource_entries as usize)
+            .collect();
+
+        Some(DnsPacket {
+            header,
+            questions,
+            answers,
+            authorities,
+            resources,
+        })
     }
 }
