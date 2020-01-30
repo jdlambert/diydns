@@ -11,7 +11,7 @@ pub struct BytePacketBuffer {
     pub pos: usize,
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl BytePacketBuffer {
     pub fn new() -> BytePacketBuffer {
@@ -45,7 +45,7 @@ impl BytePacketBuffer {
         Ok(self.buf[pos])
     }
 
-    fn get_range<'a>(&'a self, start: usize, len: usize) -> Result<&'a [u8]> {
+    pub fn get_range<'a>(&'a self, start: usize, len: usize) -> Result<&'a [u8]> {
         self.is_in_range(start + len)?;
         Ok(&self.buf[start..start + len])
     }
