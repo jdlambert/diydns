@@ -1,3 +1,4 @@
+extern crate rand;
 use std::default::Default;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read};
@@ -536,6 +537,80 @@ pub struct DnsPacket {
     pub answers: Vec<DnsRecord>,
     pub authorities: Vec<DnsRecord>,
     pub resources: Vec<DnsRecord>,
+}
+
+impl DnsPacket {
+    pub fn get_random_a(&self) -> Option<String> {
+        if !self.answers.is_empty() {
+            let idx = rand::random::<usize>() % self.answers.len();
+            let a_record = &self.answers[idx];
+            if let DnsRecord::A { ref addr, .. } = *a_record {
+                return Some(addr.to_string());
+            }
+        }
+
+        None
+    }
+
+    pub fn get_resolved_ns(&self, qname: &str) -> Option<String> {
+        let mut new_authorities = Vec::new();
+        for auth in &self.authorities {
+            if let DnsRecord::NS { domain, host, .. } = auth {
+                if !qname.ends_with(domain) {
+                    continue;
+                }
+
+                for rsrc in &self.resources {
+                    if let DnsRecord::A { domain, addr, ttl } = rsrc {
+                        if domain != host {
+                            continue;
+                        }
+
+                        let rec = DnsRecord::A {
+                            domain: host.clone(),
+                            addr: *addr,
+                            ttl: *ttl,
+                        };
+
+                        new_authorities.push(rec);
+                    }
+                }
+            }
+        }
+
+        if !new_authorities.is_empty() {
+            if let DnsRecord::A { addr, .. } = new_authorities[0] {
+                return Some(addr.to_string());
+            }
+        }
+
+        None
+    }
+
+    pub fn get_unresolved_ns(&self, qname: &str) -> Option<String> {
+        let mut new_authorities = Vec::new();
+        for auth in &self.authorities {
+            if let DnsRecord::NS {
+                ref domain,
+                ref host,
+                ..
+            } = *auth
+            {
+                if !qname.ends_with(domain) {
+                    continue;
+                }
+
+                new_authorities.push(host);
+            }
+        }
+
+        if !new_authorities.is_empty() {
+            let idx = rand::random::<usize>() % new_authorities.len();
+            return Some(new_authorities[idx].clone());
+        }
+
+        None
+    }
 }
 
 impl BytePacketBuffer {
