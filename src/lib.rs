@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::iter;
 use std::net::Ipv4Addr;
 
@@ -9,11 +11,12 @@ pub struct BytePacketBuffer {
 }
 
 impl BytePacketBuffer {
-    pub fn new() -> BytePacketBuffer {
-        BytePacketBuffer {
-            buf: [0; MAX_BUFFER_SIZE],
-            pos: 0,
-        }
+    pub fn from_file(filename: &str) -> Option<BytePacketBuffer> {
+        let mut file = File::open(filename).unwrap();
+        let mut buf = [0; MAX_BUFFER_SIZE];
+        file.read(&mut buf).unwrap();
+
+        Some(BytePacketBuffer { buf, pos: 0 })
     }
 
     fn is_in_range(&self, pos: usize) -> Option<()> {

@@ -1,3 +1,24 @@
+
+
+use diydns::BytePacketBuffer;
+
 fn main() {
-    println!("Hello, world!");
+
+    let mut buffer = BytePacketBuffer::from_file("response_packet").unwrap();
+
+    let packet = buffer.read_packet().unwrap();
+    println!("{:#?}", packet.header);
+
+    for q in packet.questions {
+        println!("{:#?}", q);
+    }
+    for rec in packet.answers {
+        println!("{:#?}", rec);
+    }
+    for rec in packet.authorities {
+        println!("{:#?}", rec);
+    }
+    for rec in packet.resources {
+        println!("{:#?}", rec);
+    }
 }
