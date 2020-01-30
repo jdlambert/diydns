@@ -1,9 +1,8 @@
 use diydns::BytePacketBuffer;
-use std::env::args;
+use std::env;
 
-fn main() {
-    let args: Vec<String> = args().collect();
-    let mut buffer = BytePacketBuffer::from_file(args.get(1).unwrap()).unwrap();
+fn decode(args: Vec<String>) {
+    let mut buffer = BytePacketBuffer::from_file(args.get(2).unwrap()).unwrap();
 
     let packet = buffer.read_packet().unwrap();
     println!("{:#?}", packet.header);
@@ -19,5 +18,17 @@ fn main() {
     }
     for rec in packet.resources {
         println!("{:#?}", rec);
+    }
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    match args[1].as_str() {
+        "decode" => decode(args),
+        _ => {
+            println!("Unknown subcommand! Acceptable inputs: decode, resolve");
+            return;
+        }
     }
 }
