@@ -1,3 +1,4 @@
+use std::default::Default;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read};
 use std::iter;
@@ -157,6 +158,12 @@ pub enum ResultCode {
     Refused,
 }
 
+impl Default for ResultCode {
+    fn default() -> Self {
+        ResultCode::Success
+    }
+}
+
 impl ResultCode {
     pub fn from_num(num: u8) -> ResultCode {
         match num {
@@ -171,7 +178,7 @@ impl ResultCode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DnsHeader {
     pub id: u16, // 16 bits
 
@@ -374,7 +381,7 @@ impl BytePacketBuffer {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DnsPacket {
     pub header: DnsHeader,
     pub questions: Vec<DnsQuestion>,
