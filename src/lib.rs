@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::iter;
@@ -10,48 +11,66 @@ pub struct BytePacketBuffer {
     pub pos: usize,
 }
 
+pub enum BytePacketBufferError {
+    EndOfBuffer,
+}
+
+impl fmt::Debug for BytePacketBufferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                BytePacketBufferError::EndOfBuffer => "Unexpected end of buffer!",
+            }
+        )
+    }
+}
+
+type Result<T> = std::result::Result<T, BytePacketBufferError>;
+
 impl BytePacketBuffer {
-    pub fn from_file(filename: &str) -> Option<BytePacketBuffer> {
+    pub fn from_file(filename: &str) -> Result<BytePacketBuffer> {
         let mut file = File::open(filename).unwrap();
         let mut buf = [0; MAX_BUFFER_SIZE];
         file.read(&mut buf).unwrap();
 
-        Some(BytePacketBuffer { buf, pos: 0 })
+        Ok(BytePacketBuffer { buf, pos: 0 })
     }
 
-    fn is_in_range(&self, pos: usize) -> Option<()> {
+    fn is_in_range(&self, pos: usize) -> Result<()> {
         if pos < MAX_BUFFER_SIZE {
-            Some(())
+            Ok(())
         } else {
-            None
+            Err(BytePacketBufferError::EndOfBuffer)
         }
     }
 
-    fn get(&self, pos: usize) -> Option<u8> {
+    fn get(&self, pos: usize) -> Result<u8> {
         self.is_in_range(pos)?;
-        Some(self.buf[pos])
+        Ok(self.buf[pos])
     }
 
-    fn get_range<'a>(&'a self, start: usize, len: usize) -> Option<&'a [u8]> {
+    fn get_range<'a>(&'a self, start: usize, len: usize) -> Result<&'a [u8]> {
         self.is_in_range(start + len)?;
-        Some(&self.buf[start..start + len])
+        Ok(&self.buf[start..start + len])
     }
 
-    fn read(&mut self) -> Option<u8> {
+    fn read(&mut self) -> Result<u8> {
         self.is_in_range(self.pos)?;
         self.pos += 1;
-        Some(self.buf[self.pos - 1])
+        Ok(self.buf[self.pos - 1])
     }
 
-    fn read_u16(&mut self) -> Option<u16> {
-        Some(((self.read()? as u16) << 8) | (self.read()? as u16))
+    fn read_u16(&mut self) -> Result<u16> {
+        Ok(((self.read()? as u16) << 8) | (self.read()? as u16))
     }
 
-    fn read_u32(&mut self) -> Option<u32> {
-        Some(((self.read_u16()? as u32) << 16) | (self.read_u16()? as u32))
+    fn read_u32(&mut self) -> Result<u32> {
+        Ok(((self.read_u16()? as u32) << 16) | (self.read_u16()? as u32))
     }
 
-    fn read_qname(&mut self) -> Option<String> {
+    fn read_qname(&mut self) -> Result<String> {
         let mut qname_pos = self.pos;
         let mut jumped = false;
         let mut first = true;
@@ -91,7 +110,28 @@ impl BytePacketBuffer {
             self.pos = qname_pos;
         }
 
-        Some(out)
+        Ok(out)
+    }
+
+    fn write(&mut self, val: u8) -> Result<()> {
+        self.is_in_range(self.pos)?;
+        self.buf[self.pos] = val;
+        self.pos += 1;
+        Ok(())
+    }
+
+    fn write_u16(&mut self, val: u16) -> Result<()> {
+        self.write((val >> 8) as u8)?;
+        self.write((val & 0xFF) as u8)?;
+
+        Ok(())
+    }
+
+    fn write_u32(&mut self, val: u32) -> Result<()> {
+        self.write_u16(((val >> 16) & 0xFFFF) as u16)?;
+        self.write_u16((val & 0xFFFF) as u16)?;
+
+        Ok(())
     }
 }
 
@@ -142,7 +182,7 @@ pub struct DnsHeader {
 }
 
 impl BytePacketBuffer {
-    pub fn read_header(&mut self) -> Option<DnsHeader> {
+    pub fn read_header(&mut self) -> Result<DnsHeader> {
         let id = self.read_u16()?;
 
         let flags = self.read_u16()?;
@@ -165,7 +205,7 @@ impl BytePacketBuffer {
         let authoritative_entries = self.read_u16()?;
         let resource_entries = self.read_u16()?;
 
-        Some(DnsHeader {
+        Ok(DnsHeader {
             id,
             recursion_desired,
             truncated_message,
@@ -214,12 +254,12 @@ pub struct DnsQuestion {
 }
 
 impl BytePacketBuffer {
-    pub fn read_question(&mut self) -> Option<DnsQuestion> {
+    pub fn read_question(&mut self) -> Result<DnsQuestion> {
         let name = self.read_qname()?;
         let qtype = QueryType::from_num(self.read_u16()?);
         self.read_u16()?; // class, which we ignore
 
-        Some(DnsQuestion { name, qtype })
+        Ok(DnsQuestion { name, qtype })
     }
 }
 
@@ -239,7 +279,7 @@ pub enum DnsRecord {
 }
 
 impl BytePacketBuffer {
-    pub fn read_record(&mut self) -> Option<DnsRecord> {
+    pub fn read_record(&mut self) -> Result<DnsRecord> {
         let domain = self.read_qname()?;
 
         let qtype = QueryType::from_num(self.read_u16()?);
@@ -247,7 +287,7 @@ impl BytePacketBuffer {
         let ttl = self.read_u32()?;
         let data_len = self.read_u16()?;
 
-        Some(match qtype {
+        Ok(match qtype {
             QueryType::A => DnsRecord::A {
                 domain,
                 ttl,
@@ -277,7 +317,7 @@ pub struct DnsPacket {
 }
 
 impl BytePacketBuffer {
-    pub fn read_packet(&mut self) -> Option<DnsPacket> {
+    pub fn read_packet(&mut self) -> Result<DnsPacket> {
         let header = self.read_header()?;
 
         let questions = iter::repeat_with(|| self.read_question().unwrap())
@@ -293,7 +333,7 @@ impl BytePacketBuffer {
             .take(header.resource_entries as usize)
             .collect();
 
-        Some(DnsPacket {
+        Ok(DnsPacket {
             header,
             questions,
             answers,
