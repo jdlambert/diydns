@@ -88,3 +88,93 @@ impl BytePacketBuffer {
         Some(out)
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ResultCode {
+    Success,
+    FormError,
+    ServerFail,
+    NonexistantDomain,
+    NotImplemented,
+    Refused,
+}
+
+impl ResultCode {
+    pub fn from_num(num: u8) -> ResultCode {
+        match num {
+            1 => ResultCode::FormError,
+            2 => ResultCode::ServerFail,
+            3 => ResultCode::NonexistantDomain,
+            4 => ResultCode::NotImplemented,
+            5 => ResultCode::Refused,
+            0 => ResultCode::Success,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DnsHeader {
+    pub id: u16, // 16 bits
+
+    pub recursion_desired: bool,    // 1 bit
+    pub truncated_message: bool,    // 1 bit
+    pub authoritative_answer: bool, // 1 bit
+    pub opcode: u8,                 // 4 bits
+    pub response: bool,             // 1 bit
+
+    pub rescode: ResultCode,       // 4 bits
+    pub checking_disabled: bool,   // 1 bit
+    pub authed_data: bool,         // 1 bit
+    pub z: bool,                   // 1 bit
+    pub recursion_available: bool, // 1 bit
+
+    pub questions: u16,             // 16 bits
+    pub answers: u16,               // 16 bits
+    pub authoritative_entries: u16, // 16 bits
+    pub resource_entries: u16,      // 16 bits
+}
+
+impl BytePacketBuffer {
+    pub fn read_header(&mut self) -> Option<DnsHeader> {
+        let id = self.read_u16()?;
+
+        let flags = self.read_u16()?;
+        let a = (flags >> 8) as u8;
+        let b = (flags & 0xFF) as u8;
+        let recursion_desired = (a & (1 << 0)) > 0;
+        let truncated_message = (a & (1 << 1)) > 0;
+        let authoritative_answer = (a & (1 << 2)) > 0;
+        let opcode = (a >> 3) & 0x0F;
+        let response = (a & (1 << 7)) > 0;
+
+        let rescode = ResultCode::from_num(b & 0x0F);
+        let checking_disabled = (b & (1 << 4)) > 0;
+        let authed_data = (b & (1 << 5)) > 0;
+        let z = (b & (1 << 6)) > 0;
+        let recursion_available = (b & (1 << 7)) > 0;
+
+        let questions = self.read_u16()?;
+        let answers = self.read_u16()?;
+        let authoritative_entries = self.read_u16()?;
+        let resource_entries = self.read_u16()?;
+
+        Some(DnsHeader {
+            id,
+            recursion_desired,
+            truncated_message,
+            authoritative_answer,
+            opcode,
+            response,
+            rescode,
+            checking_disabled,
+            authed_data,
+            z,
+            recursion_available,
+            questions,
+            answers,
+            authoritative_entries,
+            resource_entries,
+        })
+    }
+}
