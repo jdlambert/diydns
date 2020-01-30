@@ -2,7 +2,7 @@ use std::default::Default;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read};
 use std::iter;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 const MAX_BUFFER_SIZE: usize = 512;
 
@@ -146,6 +146,20 @@ impl BytePacketBuffer {
 
         self.write(0)
     }
+
+    fn set(&mut self, pos: usize, val: u8) -> Result<()> {
+        self.is_in_range(pos)?;
+        self.buf[pos] = val;
+
+        Ok(())
+    }
+
+    fn set_u16(&mut self, pos: usize, val: u16) -> Result<()> {
+        self.set(pos, (val >> 8) as u8)?;
+        self.set(pos + 1, (val & 0xFF) as u8)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -273,6 +287,10 @@ impl BytePacketBuffer {
 pub enum QueryType {
     Unknown(u16),
     A,
+    NS,
+    CNAME,
+    MX,
+    AAAA,
 }
 
 impl QueryType {
@@ -280,12 +298,20 @@ impl QueryType {
         match *self {
             QueryType::Unknown(x) => x,
             QueryType::A => 1,
+            QueryType::NS => 2,
+            QueryType::CNAME => 5,
+            QueryType::MX => 15,
+            QueryType::AAAA => 28,
         }
     }
 
     pub fn from_num(num: u16) -> QueryType {
         match num {
             1 => QueryType::A,
+            2 => QueryType::NS,
+            5 => QueryType::CNAME,
+            15 => QueryType::MX,
+            28 => QueryType::AAAA,
             _ => QueryType::Unknown(num),
         }
     }
@@ -327,6 +353,27 @@ pub enum DnsRecord {
         addr: Ipv4Addr,
         ttl: u32,
     },
+    NS {
+        domain: String,
+        host: String,
+        ttl: u32,
+    },
+    CNAME {
+        domain: String,
+        host: String,
+        ttl: u32,
+    },
+    MX {
+        domain: String,
+        priority: u16,
+        host: String,
+        ttl: u32,
+    },
+    AAAA {
+        domain: String,
+        addr: Ipv6Addr,
+        ttl: u32,
+    },
 }
 
 impl BytePacketBuffer {
@@ -343,6 +390,36 @@ impl BytePacketBuffer {
                 domain,
                 ttl,
                 addr: Ipv4Addr::from(self.read_u32()?),
+            },
+            QueryType::AAAA => DnsRecord::AAAA {
+                domain,
+                ttl,
+                addr: Ipv6Addr::new(
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                    self.read_u16()?,
+                ),
+            },
+            QueryType::NS => DnsRecord::NS {
+                domain,
+                ttl,
+                host: self.read_qname()?,
+            },
+            QueryType::CNAME => DnsRecord::CNAME {
+                domain,
+                ttl,
+                host: self.read_qname()?,
+            },
+            QueryType::MX => DnsRecord::MX {
+                domain: domain,
+                priority: self.read_u16()?,
+                host: self.read_qname()?,
+                ttl: ttl,
             },
             QueryType::Unknown(qtype) => {
                 self.pos += data_len as usize;
@@ -370,6 +447,77 @@ impl BytePacketBuffer {
 
                 for octet in addr.octets().iter() {
                     self.write(*octet)?;
+                }
+            }
+            DnsRecord::NS {
+                ref domain,
+                ref host,
+                ttl,
+            } => {
+                self.write_qname(domain)?;
+                self.write_u16(QueryType::NS.to_num())?;
+                self.write_u16(1)?;
+                self.write_u32(ttl)?;
+
+                let pos = self.pos;
+                self.write_u16(0)?;
+
+                self.write_qname(host)?;
+
+                let size = self.pos - (pos + 2);
+                self.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::CNAME {
+                ref domain,
+                ref host,
+                ttl,
+            } => {
+                self.write_qname(domain)?;
+                self.write_u16(QueryType::CNAME.to_num())?;
+                self.write_u16(1)?;
+                self.write_u32(ttl)?;
+
+                let pos = self.pos;
+                self.write_u16(0)?;
+
+                self.write_qname(host)?;
+
+                let size = self.pos - (pos + 2);
+                self.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::MX {
+                ref domain,
+                priority,
+                ref host,
+                ttl,
+            } => {
+                self.write_qname(domain)?;
+                self.write_u16(QueryType::MX.to_num())?;
+                self.write_u16(1)?;
+                self.write_u32(ttl)?;
+
+                let pos = self.pos;
+                self.write_u16(0)?;
+
+                self.write_u16(priority)?;
+                self.write_qname(host)?;
+
+                let size = self.pos - (pos + 2);
+                self.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::AAAA {
+                ref domain,
+                ref addr,
+                ttl,
+            } => {
+                self.write_qname(domain)?;
+                self.write_u16(QueryType::AAAA.to_num())?;
+                self.write_u16(1)?;
+                self.write_u32(ttl)?;
+                self.write_u16(16)?;
+
+                for octet in &addr.segments() {
+                    self.write_u16(*octet)?;
                 }
             }
             _ => {
