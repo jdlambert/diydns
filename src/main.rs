@@ -1,10 +1,7 @@
-
-
 use diydns::BytePacketBuffer;
 use std::env::args;
 
 fn main() {
-
     let args: Vec<String> = args().collect();
     let mut buffer = BytePacketBuffer::from_file(args.get(1).unwrap()).unwrap();
 
