@@ -83,23 +83,21 @@ fn serve() {
 
             if let Ok(result) = lookup(&question.name, question.qtype, server) {
                 packet.questions.push(question.clone());
+                packet.header.questions = 1;
                 packet.header.rescode = result.header.rescode;
 
-                for rec in result.answers {
-                    println!("Answer: {:?}", rec);
-                    packet.answers.push(rec);
-                }
-                for rec in result.authorities {
-                    println!("Authority: {:?}", rec);
-                    packet.authorities.push(rec);
-                }
-                for rec in result.resources {
-                    println!("Resource: {:?}", rec);
-                    packet.resources.push(rec);
-                }
+                packet.answers = result.answers;
+                packet.authorities = result.authorities;
+                packet.resources = result.resources;
+
+                packet.header.answers = result.header.answers; 
+                packet.header.authoritative_entries = result.header.authoritative_entries;
+                packet.header.resource_entries = result.header.resource_entries;
             } else {
                 packet.header.rescode = ResultCode::ServerFail;
             }
+            
+            println!("{:#?}", packet);
 
             let mut res_buffer = BytePacketBuffer::new();
             if let Err(e) = res_buffer.write_packet(packet) {
@@ -115,7 +113,7 @@ fn serve() {
                     continue;
                 }
             };
-
+            
             if let Err(e) = socket.send_to(data, src) {
                 println!("Failed to send response buffer: {:?}", e);
                 continue;

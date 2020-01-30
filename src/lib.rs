@@ -122,7 +122,7 @@ impl BytePacketBuffer {
     }
 
     fn write_u32(&mut self, val: u32) -> Result<()> {
-        self.write_u16(((val >> 16) & 0xFFFF) as u16)?;
+        self.write_u16((val >> 16) as u16)?;
         self.write_u16((val & 0xFFFF) as u16)?;
 
         Ok(())
